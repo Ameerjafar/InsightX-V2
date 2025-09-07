@@ -38,8 +38,8 @@ model ExistingTrades {
   liquidated Boolean
   createdAt  DateTime @default(now())
 
-  asset   Asset  @relation(fields: [assetId], references: [id])
+  asset   Asset   @relation(fields: [assetId], references: [id])
   assetId String
-  user   User?   @relation(fields: [userId], references: [id])
-  userId String?
+  user    User?   @relation(fields: [userId], references: [id])
+  userId  String?
 }

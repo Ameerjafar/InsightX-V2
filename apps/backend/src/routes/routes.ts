@@ -1,5 +1,5 @@
 import express from 'express';
-import { signin, signup } from '../cotrollers/authController';
+import { signin, signup } from '../controllers/authController';
 import { tradeRoute } from './tradeRoute';
 export const routes = express.Router();
 
