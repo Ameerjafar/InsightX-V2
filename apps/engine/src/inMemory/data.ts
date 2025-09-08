@@ -12,8 +12,10 @@ interface openTrade {
 }
 interface UserBalance {
     USD: number,
-    freeMargin: number
+    freeMargin: number,
+    assets: Record<string, number>
 }
+
 export const prices: Record<string, PriceData> = {
   BTC: {
     prices: 0,

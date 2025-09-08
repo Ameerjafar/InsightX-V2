@@ -1,11 +1,18 @@
 import express from 'express';
-import { signin, signup } from '../controllers/authController';
+import { signin, signup, postSignin } from '../controllers/authController';
 import { tradeRoute } from './tradeRoute';
+import { getUsdBalance, getAssetBalances, getSupportedAssets } from '../controllers/balanceController';
 export const routes = express.Router();
 
 routes.use('/signup', signup);
 
 routes.use('/signin', signin);
 
+routes.get('/signin/post', postSignin);
+
 routes.use('/trade', tradeRoute);
+
+routes.get('/balance/usd', getUsdBalance);
+routes.get('/balance', getAssetBalances);
+routes.get('/supportedAssets', getSupportedAssets);
 

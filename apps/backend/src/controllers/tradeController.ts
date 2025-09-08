@@ -106,6 +106,46 @@ export const closeTradeController = async (req: Request, res: Response) => {
     console.log("Received close response:", result);
 
     if (result.status === "closed") {
+      try {
+        const closed = result.closedTrade as any;
+        const pnl: number = Number(result.pnl ?? 0);
+        const entryPrice: number = Number(closed?.executedPrice ?? 0);
+        const margin: number = Number(closed?.margin ?? 0);
+        const leverage: number = Math.max(1, Number(closed?.leverage) || 1);
+        const notional = margin * leverage || 1;
+        let closePrice = entryPrice;
+        if (entryPrice > 0 && notional > 0) {
+          const changePct = (pnl / notional) || 0;
+          if (closed?.type === "short") {
+            closePrice = entryPrice * (1 - changePct);
+          } else {
+            closePrice = entryPrice * (1 + changePct);
+          }
+        }
+
+        const assetSymbol: string = String(closed?.asset || "");
+        let asset = await prisma.asset.findFirst({ where: { symbol: assetSymbol } });
+        if (!asset) {
+          asset = await prisma.asset.create({
+            data: { symbol: assetSymbol, imageUrl: "", name: assetSymbol || "ASSET", decimal: 4 }
+          });
+        }
+
+        await prisma.existingTrades.create({
+          data: {
+            openPrice: entryPrice,
+            closePrice: closePrice,
+            leverage: leverage,
+            pnl: pnl,
+            liquidated: false,
+            assetId: asset.id,
+            userId: String(req.body.userId),
+          }
+        });
+      } catch (e) {
+        console.error("Failed to persist closed trade:", e);
+      }
+
       res.status(200).json({
         orderId,
         success: true,
