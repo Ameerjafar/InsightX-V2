@@ -1,0 +1,20 @@
+{
+  "name": "backend",
+  "module": "index.ts",
+  "devDependencies": {
+    "@types/bun": "latest",
+    "tsup": "^8.5.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@types/cors": "^2.8.19",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.2",
+    "esbuild": "^0.25.9",
+    "ioredis": "^5.7.0",
+    "resend": "^4.0.0",
+    "tsconfig-paths": "^4.2.0"
+  }
+}

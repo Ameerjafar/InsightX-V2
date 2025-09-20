@@ -1,0 +1,169 @@
+
+import { Request, Response } from "express";
+import Redis from "ioredis"; 
+import { RedisSubscriber } from '../redisSubscriber';
+import { prisma } from "../db";
+import { REDIS_CONFIG } from '../config';
+
+const PRICE_STREAM = "price-stream";
+
+const redisPublisher = new Redis(REDIS_CONFIG.url);
+const redisSubscriber = RedisSubscriber.getInstance(REDIS_CONFIG.url);
+
+export const createTradeController = async (req: Request, res: Response) => {
+  try {
+    const { asset, type, margin, leverage, slippage, userId } = req.body;
+    if (!asset || !type || !margin || !leverage || !userId) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields",
+      });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      return res.status(411).json({
+        success: false,
+        message: "User not found in database",
+      });
+    }
+
+    const orderId = Date.now().toString();
+    const actualValue = margin / 100;
+    
+    const orderUpdate = {
+      asset,
+      type,
+      margin: actualValue,
+      leverage,
+      slippage: slippage || 0.1,
+      userId,
+      orderId,
+    };
+
+    console.log("Sending order to engine:", orderUpdate);
+
+    await redisPublisher.xadd(
+      PRICE_STREAM,
+      'MAXLEN', '~', '10000',
+      '*',
+      'action', 'createOrder',
+      'data', JSON.stringify(orderUpdate),
+      'orderId', orderId
+    );
+    const result = await redisSubscriber.waitForMessage(orderId, 10000); 
+
+    console.log("Received engine response:", result);
+
+    if (result.status === "success") {
+      res.status(200).json({
+        orderId,
+        success: true,
+        message: result.message,
+        tradeData: result.tradeData,
+      });
+    } else {
+      res.status(400).json({
+        orderId,
+        success: false,
+        message: result.message,
+      });
+    }
+  } catch (error) {
+    console.error("Error in createTradeController:", error);
+    res.status(500).json({
+      success: false,
+      message: error instanceof Error ? error.message : "Internal server error",
+    });
+  }
+};
+
+export const closeTradeController = async (req: Request, res: Response) => {
+  try {
+    const { orderId, userId } = req.body;
+
+    if (!orderId || !userId) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing orderId or userId",
+      });
+    }
+
+    console.log("Sending close order to engine:", { orderId, userId });
+    await redisPublisher.xadd(
+      PRICE_STREAM,
+      'MAXLEN', '~', '10000',
+      '*',
+      'action', 'closeOrder',
+      'data', JSON.stringify({ orderId, userId }),
+      'orderId', orderId
+    );
+    const result = await redisSubscriber.waitForMessage(orderId, 10000); 
+
+    console.log("Received close response:", result);
+
+    if (result.status === "closed") {
+      try {
+        const closed = result.closedTrade as any;
+        const pnl: number = Number(result.pnl ?? 0);
+        const entryPrice: number = Number(closed?.executedPrice ?? 0);
+        const margin: number = Number(closed?.margin ?? 0);
+        const leverage: number = Math.max(1, Number(closed?.leverage) || 1);
+        const notional = margin * leverage || 1;
+        let closePrice = entryPrice;
+        if (entryPrice > 0 && notional > 0) {
+          const changePct = (pnl / notional) || 0;
+          if (closed?.type === "short") {
+            closePrice = entryPrice * (1 - changePct);
+          } else {
+            closePrice = entryPrice * (1 + changePct);
+          }
+        }
+
+        const assetSymbol: string = String(closed?.asset || "");
+        let asset = await prisma.asset.findFirst({ where: { symbol: assetSymbol } });
+        if (!asset) {
+          asset = await prisma.asset.create({
+            data: { symbol: assetSymbol, imageUrl: "", name: assetSymbol || "ASSET", decimal: 4 }
+          });
+        }
+
+        await prisma.existingTrades.create({
+          data: {
+            openPrice: entryPrice,
+            closePrice: closePrice,
+            leverage: leverage,
+            pnl: pnl,
+            liquidated: false,
+            assetId: asset.id,
+            userId: String(req.body.userId),
+          }
+        });
+      } catch (e) {
+        console.error("Failed to persist closed trade:", e);
+      }
+
+      res.status(200).json({
+        orderId,
+        success: true,
+        message: result.message,
+        closedTrade: result.closedTrade,
+      });
+    } else {
+      res.status(400).json({
+        orderId,
+        success: false,
+        message: result.message,
+      });
+    }
+  } catch (error) {
+    console.error("Error in closeTradeController:", error);
+    res.status(500).json({
+      success: false,
+      message: error instanceof Error ? error.message : "Internal server error",
+    });
+  }
+};
