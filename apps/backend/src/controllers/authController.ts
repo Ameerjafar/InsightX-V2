@@ -4,7 +4,7 @@ import jwt from "jsonwebtoken";
 import { prisma } from "../db";
 import { Resend } from "resend";
 const emailSchema = zod.object({
-  email: zod.email(),
+  email: zod.string().email(),
 });
 const resend = new Resend(process.env.RESEND_API_KEY || "");
 
