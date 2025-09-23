@@ -1,13 +1,19 @@
 import express from 'express'
 import dotenv from 'dotenv';
 import cors from 'cors';
+import { routes } from './routes/routes';
+
+dotenv.config();
+
 const app = express();
 app.use(express.json());
 app.use(cors());
-dotenv.config();
 
-app.listen(3000, () => {
-  console.log("Listening on http://localhost:5000");
+app.use('/api/v1', routes);
+
+const PORT = Number(process.env.PORT || 3000);
+app.listen(PORT, () => {
+  console.log(`Listening on http://localhost:${PORT}`);
 });
 
 

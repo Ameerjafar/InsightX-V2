@@ -1,3 +1,17 @@
+# InsightX Web
+
+Environment:
+
+Set `NEXT_PUBLIC_API_BASE` to your backend base URL (default `http://localhost:3000/api/v1`).
+
+Routes used:
+- POST `${NEXT_PUBLIC_API_BASE}/signup`
+- POST `${NEXT_PUBLIC_API_BASE}/signin`
+- GET `${NEXT_PUBLIC_API_BASE}/balance/usd`
+- GET `${NEXT_PUBLIC_API_BASE}/balance`
+- GET `${NEXT_PUBLIC_API_BASE}/supportedAssets`
+- POST `${NEXT_PUBLIC_API_BASE}/trade/create`
+- POST `${NEXT_PUBLIC_API_BASE}/trade/close`
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/create-next-app).
 
 ## Getting Started
