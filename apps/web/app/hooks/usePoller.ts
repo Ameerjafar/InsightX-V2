@@ -16,41 +16,70 @@ export const usePricePoller = () => {
   });
 
   const wsRef = useRef<WebSocket | null>(null);
+  const reconnectAttemptsRef = useRef<number>(0);
 
   useEffect(() => {
-    const ws = new WebSocket("ws://localhost:8080");
-    wsRef.current = ws;
+    const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8080";
 
-    ws.onopen = () => console.log("Connected to WebSocket");
+    const connect = () => {
+      const ws = new WebSocket(WS_URL);
+      wsRef.current = ws; 
 
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.type === "bookTicker") {
-        console.log("This is inside the book ticker")
-        const { symbol, bookTicker }: { symbol: string, bookTicker: any} = data.data;
-        console.log("This is the bid price", bookTicker.bidPrice);
-        setPrices((prev) => {
-          if (!(symbol in prev)) return prev; 
-          return {
-            ...prev, 
-            [symbol]: {
-              bid: [
-                bookTicker.bidPrice,
-                bookTicker.bidPrice > prev[symbol].bid[0],
-              ],
-              ask: [
-                bookTicker.askPrice,
-                prev[symbol].ask[0] > bookTicker.askPrice,
-              ],
-            },
-          };
-        });
-        console.log(prices);
-      }
+      ws.onopen = () => {
+        console.log("Connected to WebSocket:", WS_URL);
+        reconnectAttemptsRef.current = 0;
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === "bookTicker" && data.data) {
+            const { symbol, bookTicker }: { symbol: string; bookTicker: { bidPrice: string | number; askPrice: string | number } } = data.data;
+            const baseSymbol = (symbol || "").replace(/USDT$/i, "").toUpperCase();
+            const bid = Number(bookTicker?.bidPrice);
+            const ask = Number(bookTicker?.askPrice);
+            if (!(["BTC", "ETH", "SOL"].includes(baseSymbol)) || Number.isNaN(bid) || Number.isNaN(ask)) {
+              return;
+            }
+            setPrices((prev) => {
+              if (!(baseSymbol in prev)) return prev;
+              const symbolKey = baseSymbol as keyof PriceData;
+              const prevBid = prev[symbolKey].bid[0];
+              const prevAsk = prev[symbolKey].ask[0];
+
+              if (prevBid === bid && prevAsk === ask) return prev;
+
+              return {
+                ...prev,
+                [symbolKey]: {
+                  bid: [bid, bid > prevBid],
+                  ask: [ask, prevAsk > ask],
+                },
+              };
+            });
+          }
+        } catch (e) {
+          console.warn("Failed to parse WS message", e);
+        }
+      };
+
+      ws.onerror = (err) => {
+        console.log("WebSocket error:", err);
+      };
+      ws.onclose = () => {
+        console.log("WebSocket closed, scheduling reconnect...");
+        const attempt = reconnectAttemptsRef.current + 1;
+        reconnectAttemptsRef.current = attempt;
+        const delay = Math.min(5000, 500 * attempt);
+        setTimeout(() => {
+          if (wsRef.current === ws) {
+            connect();
+          }
+        }, delay);
+      };
     };
 
-    ws.onerror = (err) => console.log("WebSocket error:", err);
-    ws.onclose = () => console.log("WebSocket closed");
+    connect();
 
     return () => wsRef.current?.close();
   }, []);

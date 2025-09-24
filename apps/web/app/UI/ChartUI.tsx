@@ -63,9 +63,21 @@ export default function ChartUi() {
   };
   useEffect(() => {
     const dummyData = getDummyData(selectedSymbol);
-    console.log("This is the chartData", chartData);
+    console.log("This is the chartData", dummyData);
     setChartData(dummyData);
   }, [selectedSymbol]);
+  
+  const enhancedOptions: ApexOptions = {
+    ...options,
+    tooltip: {
+      enabled: true,
+      theme: 'dark',
+      style: {
+        fontSize: '12px',
+        fontFamily: 'Inter, sans-serif'
+      }
+    }
+  };
 
   return (
     <div className="bg-[#141619] min-h-screen">
@@ -99,7 +111,7 @@ export default function ChartUi() {
           </div>
           {chartData.length > 0 ? (
             <Chart
-              options={options}
+              options={enhancedOptions}
               series={[{ data: chartData }]}
               type="candlestick"
               height={450}

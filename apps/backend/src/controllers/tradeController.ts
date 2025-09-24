@@ -12,7 +12,8 @@ const redisSubscriber = RedisSubscriber.getInstance(REDIS_CONFIG.url);
 
 export const createTradeController = async (req: Request, res: Response) => {
   try {
-    const { asset, type, margin, leverage, slippage, userId } = req.body;
+    const { asset, type, margin, leverage, userId, quantity } = req.body;
+    const slippage = 0.1;
     if (!asset || !type || !margin || !leverage || !userId) {
       return res.status(400).json({
         success: false,
@@ -39,7 +40,7 @@ export const createTradeController = async (req: Request, res: Response) => {
       type,
       margin: actualValue,
       leverage,
-      slippage: slippage || 0.1,
+      slippage: slippage,
       userId,
       orderId,
     };
@@ -59,6 +60,30 @@ export const createTradeController = async (req: Request, res: Response) => {
     console.log("Received engine response:", result);
 
     if (result.status === "success") {
+      try {
+        const alreadyExists = await prisma.existingTrades.findFirst({
+          where: {
+            userId: userId,
+            orderId: orderId,
+          } as any,
+        });
+
+        if (!alreadyExists) {
+          await prisma.existingTrades.create({
+            data: {
+              orderId: orderId,
+              type: type,
+              margin: margin,
+              quantity: quantity,
+              slippage: slippage,
+              assetId: asset,
+              userId: userId,
+            } as any,
+          });
+        }
+      } catch (e) {
+        console.error("Failed to persist/open existing trade:", e);
+      }
       res.status(200).json({
         orderId,
         success: true,
@@ -107,43 +132,14 @@ export const closeTradeController = async (req: Request, res: Response) => {
 
     if (result.status === "closed") {
       try {
-        const closed = result.closedTrade as any;
-        const pnl: number = Number(result.pnl ?? 0);
-        const entryPrice: number = Number(closed?.executedPrice ?? 0);
-        const margin: number = Number(closed?.margin ?? 0);
-        const leverage: number = Math.max(1, Number(closed?.leverage) || 1);
-        const notional = margin * leverage || 1;
-        let closePrice = entryPrice;
-        if (entryPrice > 0 && notional > 0) {
-          const changePct = (pnl / notional) || 0;
-          if (closed?.type === "short") {
-            closePrice = entryPrice * (1 - changePct);
-          } else {
-            closePrice = entryPrice * (1 + changePct);
-          }
-        }
-
-        const assetSymbol: string = String(closed?.asset || "");
-        let asset = await prisma.asset.findFirst({ where: { symbol: assetSymbol } });
-        if (!asset) {
-          asset = await prisma.asset.create({
-            data: { symbol: assetSymbol, imageUrl: "", name: assetSymbol || "ASSET", decimal: 4 }
-          });
-        }
-
-        await prisma.existingTrades.create({
-          data: {
-            openPrice: entryPrice,
-            closePrice: closePrice,
-            leverage: leverage,
-            pnl: pnl,
-            liquidated: false,
-            assetId: asset.id,
-            userId: String(req.body.userId),
-          }
+        await prisma.existingTrades.deleteMany({
+          where: {
+            userId: String(userId),
+            orderId: String(orderId),
+          } as any,
         });
       } catch (e) {
-        console.error("Failed to persist closed trade:", e);
+        console.error("Failed to remove existing trade on close:", e);
       }
 
       res.status(200).json({

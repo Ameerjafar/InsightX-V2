@@ -3,12 +3,11 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
-import { usePricePoller } from "../hooks/usePricePoller";
+import { usePricePoller } from "../hooks/usePoller";
 
 export const TradingPanel = () => {
   const [type, setType] = useState<"BUY" | "SELL">("BUY");
   const [quantity, setQuantity] = useState<number>(0.01);
-  const [email, setEmail] = useState<string>("");
   const [asset, setAsset] = useState<"BTC" | "ETH" | "SOL">("BTC");
   const [activeType, setActiveType] = useState<"buy" | "sell">("buy");
   const [activeAsset, setActiveAsset] = useState<"BTC" | "ETH" | "SOL">("BTC");
@@ -30,29 +29,23 @@ export const TradingPanel = () => {
   useEffect(() => setAsset(activeAsset), [activeAsset]);
   const leverageOptions = [1, 2, 5, 10, 20, 50, 100];
   const sumbitHandler = async () => {
-    console.log(
-      "This is the body of openOrder",
-      email,
-      type,
-      quantity,
-      asset
-    );
-    const response = await axios.post(
-      "http://localhost:5000/orders/openOrder",
+    console.log("Open order payload", { type, quantity, asset });
+    const backend = process.env.NEXT_PUBLIC_BACKEND_API || "http://localhost:5000";
+    const userId = localStorage.getItem("userId");
+    await axios.post(
+      `${backend}/api/v1/trade/create`,
       {
-        email: localStorage.getItem("userEmail"),
-        type,
-        quantity,
         asset,
-        leverageStatus: false,
-        cryptoValue:
-          type === "BUY" ? prices[asset].ask[0] : prices[asset].bid[0],
+        type,
+        // Map quantity to margin for the new API
+        margin: quantity,
+        leverage: selectedLeverage,
+        userId,
       }
     );
-    console.log(response.data);
     toast.success(`${type} order is placed`);
   };
-  const quantiyController = (e) => {
+  const quantiyController = (e: React.ChangeEvent<HTMLInputElement>) => {
     console.log(e.target.value);
     setQuantity(Number(e.target.value));
     let price = 0;

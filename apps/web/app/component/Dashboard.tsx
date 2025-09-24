@@ -11,7 +11,7 @@ import { BalanceCard } from "../UI/BalanceCard";
 import { Navigation } from "../UI/Navigation";
 
 type OpenTrade = {
-  crypto: keyof PriceData;
+  crypto: string;
   cryptoValue: number;
   quantity: number;
   type: "BUY" | "SELL";
@@ -80,12 +80,13 @@ export const Dashboard = () => {
     let totalOpenTradesValue = 0;
 
     allTrades.forEach((openTrade) => {
+      const cryptoKey = openTrade.crypto as keyof PriceData;
       const profitLoss = calculateProfitLoss(
         openTrade.cryptoValue,
         openTrade.quantity,
         openTrade.type,
-        prices[openTrade.crypto]?.bid[0] || 0,
-        prices[openTrade.crypto]?.ask[0] || 0
+        prices[cryptoKey]?.bid[0] || 0,
+        prices[cryptoKey]?.ask[0] || 0
       );
 
       totalProfitLoss += profitLoss;
@@ -108,10 +109,8 @@ export const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-[#141619]">
-      {/* Navigation */}
       <Navigation />
 
-      {/* Header */}
       <div className="p-20 pb-0 pl-10">
         <div className="text-3xl text-white font-bold">Trading Dashboard</div>
       </div>

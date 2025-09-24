@@ -1,4 +1,5 @@
 import { redis, redisList, redisSnapshot } from "./redis";
+import { WebSocketServer } from "ws";
 import { prices, openTrades, Userbalances } from "./inMemory/data";
 import { closeOrderCheck, openOrderCheck } from "./checks";
 
@@ -23,6 +24,19 @@ async function snapshot(kind: "trades" | "balances" | "prices") {
   } catch (e) {
     console.error("snapshot failed", e);
   }
+}
+
+const ENGINE_WS_PORT = Number(process.env.ENGINE_WS_PORT || 8080);
+const wss = new WebSocketServer({ port: ENGINE_WS_PORT });
+console.log(`Engine WebSocket listening on ws://localhost:${ENGINE_WS_PORT}`);
+
+function broadcast(data: unknown) {
+  const payload = JSON.stringify(data);
+  wss.clients.forEach((client: any) => {
+    if (client.readyState === 1) {
+      client.send(payload);
+    }
+  });
 }
 
 async function continuousReading() {
@@ -62,6 +76,22 @@ async function continuousReading() {
                   prices: data.price,
                   decimal: data.decimals,
                 };
+                const priceFloat = data.price / Math.pow(10, data.decimals);
+                const askFloat = priceFloat * 1.0002;
+                broadcast({
+                  type: "bookTicker",
+                  data: {
+                    symbol: data.asset,
+                    bookTicker: {
+                      bidPrice: Number(
+                        priceFloat.toFixed(data.decimals >= 4 ? 4 : data.decimals)
+                      ),
+                      askPrice: Number(
+                        askFloat.toFixed(data.decimals >= 4 ? 4 : data.decimals)
+                      ),
+                    },
+                  },
+                });
               });
               await snapshot("prices");
             } else if (queueName === "createOrder") {
@@ -114,6 +144,16 @@ async function continuousReading() {
                 );
 
                 console.log(`Order created: ${orderData.orderId}`);
+                // Broadcast order success to connected clients
+                broadcast({
+                  type: "orderResponse",
+                  data: {
+                    orderId: orderData.orderId,
+                    status: "success",
+                    message: "Order created successfully",
+                    tradeData,
+                  },
+                });
                 await snapshot("trades");
               } else {
                 await redis.xadd(
@@ -132,6 +172,16 @@ async function continuousReading() {
                 );
 
                 console.log(`Order failed: ${orderData.orderId}`);
+                // Broadcast order failure to connected clients
+                broadcast({
+                  type: "orderResponse",
+                  data: {
+                    orderId: orderData.orderId,
+                    status: "failed",
+                    message:
+                      "Order validation failed - insufficient margin or invalid data",
+                  },
+                });
               }
             } else if (queueName === "closeOrder") {
               const closeData = JSON.parse(dataString);
@@ -170,6 +220,17 @@ async function continuousReading() {
                   );
 
                   console.log(`Order closed: ${closeData.orderId}`);
+                  // Broadcast order close to clients
+                  broadcast({
+                    type: "orderResponse",
+                    data: {
+                      orderId: closeData.orderId,
+                      status: "closed",
+                      message: "Order closed successfully",
+                      closedTrade,
+                      pnl: closeResult.pnl ?? 0,
+                    },
+                  });
                   await snapshot("trades");
                 } else {
                   await redis.xadd(
@@ -185,6 +246,15 @@ async function continuousReading() {
                       message: "Order not found",
                     })
                   );
+                  // Broadcast not found failure
+                  broadcast({
+                    type: "orderResponse",
+                    data: {
+                      orderId: closeData.orderId,
+                      status: "failed",
+                      message: "Order not found",
+                    },
+                  });
                 }
               } else {
                 await redis.xadd(
@@ -203,6 +273,15 @@ async function continuousReading() {
                 );
 
                 console.log(`Order close failed: ${closeData.orderId}`);
+                broadcast({
+                  type: "orderResponse",
+                  data: {
+                    orderId: closeData.orderId,
+                    status: "failed",
+                    message:
+                      closeResult.message || "Order close validation failed",
+                  },
+                });
               }
             }
           } catch (parseError) {

@@ -15,7 +15,7 @@ datasource db {
 
 model User {
   id             String           @id @default(uuid())
-  email          String
+  email          String           @unique
   password       String
   Balance        Float
   freeMargin     Float
@@ -39,7 +39,9 @@ model ExistingTrades {
   closePrice Float
   leverage   Float
   pnl        Float
+  type       String
   liquidated Boolean
+  quantity   Float
   createdAt  DateTime @default(now())
 
   asset   Asset   @relation(fields: [assetId], references: [id])

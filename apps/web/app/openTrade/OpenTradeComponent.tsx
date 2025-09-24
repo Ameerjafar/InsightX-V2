@@ -2,26 +2,12 @@
 
 import axios from "axios";
 import { useState, useEffect } from "react";
-import { usePricePoller } from "../hooks/usePricePoller";
+import { usePricePoller } from "../hooks/usePoller";
 import toast from "react-hot-toast";
-import { calculateProfitLoss, fetchOpenData } from "../component/services";
-
-interface OpenTradeObject {
-  id: number;
-  cryptoValue: number;
-  quantity: number;
-  crypto: "SOL" | "BTC" | "ETH";
-  type: "BUY" | "SELL";
-  stopLoss?: number | null;
-  takeProfit?: number | null;
-  userId: number;
-  leveragePercent?: number | null;
-  leverageStatus: boolean;
-  BalanceId: number;
-}
+import { calculateProfitLoss, fetchOpenData, OpenTrade } from "../component/services";
 
 export const OpenTradeComponent = () => {
-  const [allOpenTrades, setAllOpenTrades] = useState<OpenTradeObject[] | null>(
+  const [allOpenTrades, setAllOpenTrades] = useState<OpenTrade[] | null>(
     null
   ); 
   const [closingTrades, setClosingTrades] = useState<Set<number>>(new Set()); 
@@ -43,42 +29,34 @@ export const OpenTradeComponent = () => {
   }, []);
 
   const closeHandler = async (
-    tradeId: number,
-    leverageStatus: boolean,
-    quantity: number,
-    asset: "BTC" | "ETH" | "SOL",
-    type: "BUY" | "SELL"
+    tradeIndex: number,
+    orderId: string
   ) => {
 
-    setClosingTrades((prev) => new Set([...prev, tradeId]));
+    setClosingTrades((prev) => new Set([...prev, tradeIndex]));
     const startTime = performance.now();
     try {
-      const response = await axios.post(
-        "http://localhost:5000/orders/closeOrder",
+      const backend = process.env.NEXT_PUBLIC_BACKEND_API || "http://localhost:5000";
+      const userId = localStorage.getItem("userId");
+      await axios.post(
+        `${backend}/api/v1/trade/close`,
         {
-          email: localStorage.getItem("userEmail"),
-          quantity,
-          asset,
-          type,
-          leverageStatus,
-          individualAssetId: tradeId,
-          cryptoValue:
-            type === "BUY" ? prices[asset].ask[0] : prices[asset].bid[0],
-        },
-
+          orderId,
+          userId,
+        }
       );
       const endTime = performance.now();
       console.log("This is the performace when closing the order", endTime - startTime, "ms");
       toast.success("Order closed successfully!");
 
-      setAllOpenTrades((prev) => prev ? prev.filter((trade) => trade.id !== tradeId) : []);
+      setAllOpenTrades((prev) => prev ? prev.filter((_, index) => index !== tradeIndex) : []);
     } catch (error) {
       console.error("Error closing order:", error);
       toast.error("Failed to close order");
     } finally {
       setClosingTrades((prev) => {
         const newSet = new Set(prev);
-        newSet.delete(tradeId);
+        newSet.delete(tradeIndex);
         return newSet;
       });
     }
@@ -129,11 +107,11 @@ export const OpenTradeComponent = () => {
             openTrade.cryptoValue,
             openTrade.quantity,
             openTrade.type,
-            prices[openTrade.crypto]?.bid[0] || 0,
-            prices[openTrade.crypto]?.ask[0] || 0
+            prices[openTrade.crypto as keyof typeof prices]?.bid[0] || 0,
+            prices[openTrade.crypto as keyof typeof prices]?.ask[0] || 0
           );
 
-          const isClosing = closingTrades.has(openTrade.id);
+          const isClosing = closingTrades.has(ind);
 
           return (
             <div
@@ -148,7 +126,7 @@ export const OpenTradeComponent = () => {
                 </div>
                 <div className="flex space-x-5">
                   <div className="text-sm pt-2 text-gray-400">
-                    <div>Entry: {openTrade.cryptoValue}</div>
+                    <div>Entry: ${openTrade.cryptoValue.toFixed(2)}</div>
                     <div>
                       Profit:{" "}
                       <span
@@ -156,7 +134,7 @@ export const OpenTradeComponent = () => {
                           profitLoss >= 0 ? "text-green-500" : "text-red-500"
                         }
                       >
-                        {profitLoss.toFixed(2)}
+                        ${profitLoss.toFixed(2)}
                       </span>
                     </div>
                   </div>
@@ -169,13 +147,11 @@ export const OpenTradeComponent = () => {
                     <button
                       onClick={() => {
                         if (!isClosing) {
-                          closeHandler(
-                            openTrade.id,
-                            openTrade.leverageStatus,
-                            openTrade.quantity,
-                            openTrade.crypto,
-                            openTrade.type
-                          );
+                          // Expecting each trade to include an orderId to close
+                          // Fallback: disable if missing
+                          const orderId = (openTrade as { orderId?: string }).orderId;
+                          if (!orderId) return;
+                          closeHandler(ind, orderId);
                         }
                       }}
                       disabled={isClosing}

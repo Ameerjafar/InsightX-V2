@@ -59,22 +59,29 @@ export const getUsdBalance = async (req: Request, res: Response) => {
 
 export const getAssetBalances = async (req: Request, res: Response) => {
   try {
-    const correlationId = generateCorrelationId();
-    const message = {
-      orderId: correlationId,
-      action: "getBalances",
-      userId: req.query.userId || null,
-    };
-    await redis.lpush(REQUEST_QUEUE, JSON.stringify(message));
-    const reply = await waitForReply(correlationId, 5000);
-    if (!reply) {
-      return res.status(504).json({ message: "Timed out waiting for engine reply" });
+    const email = req.query.email as string;
+    if (!email) {
+      return res.status(400).json({ message: "Email parameter is required" });
     }
-    if (reply.error) {
-      return res.status(400).json({ message: reply.error });
+
+    // Find user by email
+    const user = await prisma.user.findUnique({
+      where: { email: email }
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
     }
-    return res.status(200).json(reply.balances || {});
+
+    return res.status(200).json({
+      balances: [{
+        USD: user.Balance,
+        freeMargin: user.freeMargin,
+        lockedMargin: user.lockedMargin
+      }]
+    });
   } catch (e) {
+    console.error("Error fetching asset balances:", e);
     return res.status(500).json({ message : "Internal server error" });
   }
 };
@@ -98,6 +105,38 @@ export const getSupportedAssets = async (req: Request, res: Response) => {
     });
     return res.status(200).json({ assets: all });
   } catch (e) {
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+export const getOpenTrades = async (req: Request, res: Response) => {
+  try {
+    const email = req.query.email as string;
+    if (!email) {
+      return res.status(400).json({ message: "Email parameter is required" });
+    }
+
+    // Find user by email
+    const user = await prisma.user.findUnique({
+      where: { email: email }
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Return current open trades (stored in ExistingTrades) for the user
+    const trades = await prisma.existingTrades.findMany({
+      where: { userId: user.id },
+      include: {
+        asset: {
+          select: { symbol: true, name: true, imageUrl: true, decimal: true }
+        }
+      }
+    });
+    return res.status(200).json({ trades });
+  } catch (e) {
+    console.error("Error fetching open trades:", e);
     return res.status(500).json({ message: "Internal server error" });
   }
 };
