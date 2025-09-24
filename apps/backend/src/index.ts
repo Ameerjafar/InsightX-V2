@@ -11,7 +11,7 @@ app.use(cors());
 
 app.use('/api/v1', routes);
 
-const PORT = Number(process.env.PORT || 3000);
+const PORT = Number(process.env.PORT || 5000);
 app.listen(PORT, () => {
   console.log(`Listening on http://localhost:${PORT}`);
 });
