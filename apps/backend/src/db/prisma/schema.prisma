@@ -35,12 +35,9 @@ model Asset {
 
 model ExistingTrades {
   id         String   @id @default(uuid())
-  openPrice  Float
-  closePrice Float
-  leverage   Float
-  pnl        Float
+  leverage   Float?
   type       String
-  liquidated Boolean
+  liquidated Boolean?
   quantity   Float
   createdAt  DateTime @default(now())
 

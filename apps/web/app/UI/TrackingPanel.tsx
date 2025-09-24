@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import axios from "axios";
 import toast from "react-hot-toast";
 import { usePricePoller } from "../hooks/usePoller";
+import { openTrade } from "../component/services";
 
 export const TradingPanel = () => {
   const [type, setType] = useState<"BUY" | "SELL">("BUY");
@@ -21,41 +21,59 @@ export const TradingPanel = () => {
 
   useEffect(() => {}, [prices]);
 
-
   useEffect(
     () => setType(activeType.toUpperCase() as "BUY" | "SELL"),
     [activeType]
   );
   useEffect(() => setAsset(activeAsset), [activeAsset]);
   const leverageOptions = [1, 2, 5, 10, 20, 50, 100];
+
   const sumbitHandler = async () => {
-    console.log("Open order payload", { type, quantity, asset });
-    const backend = process.env.NEXT_PUBLIC_BACKEND_API || "http://localhost:5000";
-    const userId = localStorage.getItem("userId");
-    await axios.post(
-      `${backend}/api/v1/trade/create`,
-      {
+    try {
+      const ask = prices[asset]?.ask?.[0] || 0;
+      const bid = prices[asset]?.bid?.[0] || 0;
+      const markPrice = type === "BUY" ? ask : bid;
+      if (!markPrice) {
+        toast.error("Price not available");
+        return;
+      }
+
+      const margin = quantity * markPrice;
+      const result = await openTrade({
         asset,
         type,
-        // Map quantity to margin for the new API
-        margin: quantity,
+        margin,
+        quantity,
         leverage: selectedLeverage,
-        userId,
+      });
+
+      if (result.success) {
+        toast.success(`${type} order placed`);
+      } else {
+        toast.error(result.message || "Failed to place order");
       }
-    );
-    toast.success(`${type} order is placed`);
-  };
-  const quantiyController = (e: React.ChangeEvent<HTMLInputElement>) => {
-    console.log(e.target.value);
-    setQuantity(Number(e.target.value));
-    let price = 0;
-    if (type === "BUY") {
-      price = prices[asset].ask[0] * quantity;
-    } else {
-      price = prices[asset].bid[0] * quantity;
+    } catch (e: unknown) {
+      const message =
+        typeof e === "object" && e !== null && "response" in e
+          ? // @ts-expect-error safe access
+            e.response?.data?.message || "Order failed"
+          : e instanceof Error
+          ? e.message
+          : "Order failed";
+      toast.error(String(message));
     }
+  };
+
+  const quantiyController = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const inputValue = Number(e.target.value || 0);
+    setQuantity(inputValue);
+
+    const ask = prices[asset]?.ask?.[0] || 0;
+    const bid = prices[asset]?.bid?.[0] || 0;
+
+    const price = (type === "BUY" ? ask : bid) * inputValue;
     setCurrentPriceLoading(true);
-    setCurrentPrice(price);
+    setCurrentPrice(price || 0);
     setCurrentPriceLoading(false);
   };
   return (
@@ -151,12 +169,13 @@ export const TradingPanel = () => {
         <div className="flex bg-[#1a1c1e] rounded-md outline-0">
           <input
             onChange={quantiyController}
+            value={quantity || ""}
             placeholder="0.01"
             className="mt-2 text-white w-full p-2"
           ></input>
         </div>
         <div className="flex justify-between items-center mt-4 p-3 bg-[#1a1c1e] rounded-md">
-          <span className="text-white font-semibold">bid price</span>
+          <span className="text-white font-semibold">est. cost</span>
           {currentPriceLoading ? (
             <div>Loading</div>
           ) : (

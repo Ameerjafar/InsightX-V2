@@ -66,15 +66,28 @@ export class RedisSubscriber {
         if (response && response.length > 0) {
           for (const stream of response) {
             for (const message of stream.messages) {
-              const messageData = message.message;
-              const orderId = messageData.orderId;
+              const messageData: Record<string, string> = message.message as any;
 
-              if (orderId && this.callbacks[orderId]) {
-                if (this.callbacks[orderId].timeoutId) {
-                  clearTimeout(this.callbacks[orderId].timeoutId);
+              // Engine writes { orderResponse: '{"orderId":..., ...}' }
+              const payloadRaw = messageData["orderResponse"];
+              let payload: any = null;
+              if (payloadRaw) {
+                try {
+                  payload = JSON.parse(payloadRaw);
+                } catch (e) {
+                  payload = null;
                 }
-                this.callbacks[orderId](messageData);
-                delete this.callbacks[orderId];
+              }
+
+              const oid = (payload && payload.orderId) || (messageData as any).orderId;
+
+              if (oid && this.callbacks[oid]) {
+                if (this.callbacks[oid].timeoutId) {
+                  clearTimeout(this.callbacks[oid].timeoutId);
+                }
+                // Resolve with parsed payload if available, else raw message
+                this.callbacks[oid](payload ?? messageData);
+                delete this.callbacks[oid];
               }
 
               lastId = message.id;

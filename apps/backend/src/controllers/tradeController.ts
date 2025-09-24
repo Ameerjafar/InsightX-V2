@@ -12,6 +12,7 @@ const redisSubscriber = RedisSubscriber.getInstance(REDIS_CONFIG.url);
 
 export const createTradeController = async (req: Request, res: Response) => {
   try {
+    console.log("creating trade")
     const { asset, type, margin, leverage, userId, quantity } = req.body;
     const slippage = 0.1;
     if (!asset || !type || !margin || !leverage || !userId) {
@@ -33,7 +34,7 @@ export const createTradeController = async (req: Request, res: Response) => {
     }
 
     const orderId = Date.now().toString();
-    const actualValue = margin / 100;
+    const actualValue = margin;
     
     const orderUpdate = {
       asset,
@@ -69,16 +70,24 @@ export const createTradeController = async (req: Request, res: Response) => {
         });
 
         if (!alreadyExists) {
+          const liquidated = Boolean((result as any)?.tradeData?.liquidated) || false;
+          const createData: any = {
+            orderId: orderId,
+            type: type,
+            margin: margin,
+            quantity: quantity,
+            slippage: slippage,
+            assetId: asset,
+            userId: userId,
+            liquidated: liquidated,
+          };
+
+          if (liquidated) {
+            createData.leverage = leverage;
+          }
+
           await prisma.existingTrades.create({
-            data: {
-              orderId: orderId,
-              type: type,
-              margin: margin,
-              quantity: quantity,
-              slippage: slippage,
-              assetId: asset,
-              userId: userId,
-            } as any,
+            data: createData,
           });
         }
       } catch (e) {

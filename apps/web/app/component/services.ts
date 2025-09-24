@@ -45,3 +45,57 @@ export const calculateProfitLoss = (
     return (entryPrice - currentPrice) * quantity;
   }
 };
+
+// --- Trade API helpers ---
+
+export interface OpenTradeRequest {
+  asset: "BTC" | "ETH" | "SOL";
+  type: "BUY" | "SELL";
+  margin: number;
+  quantity: number;
+  leverage: number;
+}
+
+export const openTrade = async (payload: OpenTradeRequest) => {
+  const backend = process.env.NEXT_PUBLIC_BACKEND_API || "http://localhost:5000";
+  const userId = localStorage.getItem("userId");
+  if (!userId) {
+    throw new Error("User not authenticated: missing userId");
+  }
+
+  const response = await axios.post(`${backend}/api/v1/trade/create`, {
+    asset: payload.asset,
+    type: payload.type,
+    margin: payload.margin,
+    quantity: payload.quantity,
+    leverage: payload.leverage,
+    userId,
+  });
+
+  return response.data as {
+    orderId: string;
+    success: boolean;
+    message: string;
+    tradeData?: unknown;
+  };
+};
+
+export const closeTrade = async (orderId: string) => {
+  const backend = process.env.NEXT_PUBLIC_BACKEND_API || "http://localhost:5000";
+  const userId = localStorage.getItem("userId");
+  if (!userId) {
+    throw new Error("User not authenticated: missing userId");
+  }
+
+  const response = await axios.post(`${backend}/api/v1/trade/close`, {
+    orderId,
+    userId,
+  });
+
+  return response.data as {
+    orderId: string;
+    success: boolean;
+    message: string;
+    closedTrade?: unknown;
+  };
+};
