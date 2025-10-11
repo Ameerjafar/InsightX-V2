@@ -1,9 +1,12 @@
 {
   "name": "backend",
   "module": "index.ts",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts"
+  },
   "devDependencies": {
     "@types/bun": "latest",
-    "tsup": "^8.5.0"
+    "tsup": "^8.5.0" 
   },
   "peerDependencies": {
     "typescript": "^5.0.0"

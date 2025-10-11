@@ -29,16 +29,22 @@ export const TradingPanel = () => {
   const leverageOptions = [1, 2, 5, 10, 20, 50, 100];
 
   const sumbitHandler = async () => {
+    console.log("hello from the sumbit handler")
+    const userId = localStorage.getItem("userId");
+    if(!userId) {
+      console.log("we cannot find the userId")
+    }
     try {
       const ask = prices[asset]?.ask?.[0] || 0;
       const bid = prices[asset]?.bid?.[0] || 0;
       const markPrice = type === "BUY" ? ask : bid;
-      if (!markPrice) {
-        toast.error("Price not available");
-        return;
-      }
+      // if (!markPrice) {
+      //   toast.error("Price not available");
+      //   return;
+      // }
 
       const margin = quantity * markPrice;
+
       const result = await openTrade({
         asset,
         type,
@@ -55,7 +61,7 @@ export const TradingPanel = () => {
     } catch (e: unknown) {
       const message =
         typeof e === "object" && e !== null && "response" in e
-          ? // @ts-expect-error safe access
+          ? 
             e.response?.data?.message || "Order failed"
           : e instanceof Error
           ? e.message
@@ -77,7 +83,7 @@ export const TradingPanel = () => {
     setCurrentPriceLoading(false);
   };
   return (
-    <div className="text-white w-lg mr-11">
+    <div className="text-white">
       <div className="border border-gray-500 mt-5 rounded-md p-4 bg-[#141619]">
         <div className="text-white text-xl font-bold mb-2">Trading Panel</div>
 
@@ -166,12 +172,12 @@ export const TradingPanel = () => {
         <div className="flex mt-2 font-semibold text-lg outline-0">
           quantity
         </div>
-        <div className="flex bg-[#1a1c1e] rounded-md outline-0">
+        <div className="flex rounded-md outline-0">
           <input
             onChange={quantiyController}
             value={quantity || ""}
             placeholder="0.01"
-            className="mt-2 text-white w-full p-2"
+            className="mt-2 bg-[#1a1c1e] text-white w-full p-2"
           ></input>
         </div>
         <div className="flex justify-between items-center mt-4 p-3 bg-[#1a1c1e] rounded-md">

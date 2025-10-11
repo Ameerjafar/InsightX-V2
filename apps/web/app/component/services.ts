@@ -9,13 +9,13 @@ export interface OpenTrade {
 
 export const fetchOpenData = async (): Promise<OpenTrade[]> => {
   try {
-    const userEmail = localStorage.getItem("userEmail");
-    if (!userEmail) {
+    const userId = localStorage.getItem("userId");
+    if (!userId) {
       return [];
     }
 
     const response = await axios.get(
-      `${process.env.NEXT_PUBLIC_BACKEND_API || "http://localhost:5000"}/api/v1/trade/open?email=${userEmail}`
+      `${process.env.NEXT_PUBLIC_BACKEND_API || "http://localhost:5000"}/api/v1/trade/getTrade?userId=${userId}`
     );
     
     return response.data.trades || [];
@@ -38,15 +38,12 @@ export const calculateProfitLoss = (
   const entryPrice = cryptoValue / quantity;
   
   if (type === "BUY") {
-    // For BUY orders, profit when current price > entry price
     return (currentPrice - entryPrice) * quantity;
   } else {
-    // For SELL orders, profit when current price < entry price
     return (entryPrice - currentPrice) * quantity;
   }
 };
 
-// --- Trade API helpers ---
 
 export interface OpenTradeRequest {
   asset: "BTC" | "ETH" | "SOL";
@@ -57,6 +54,7 @@ export interface OpenTradeRequest {
 }
 
 export const openTrade = async (payload: OpenTradeRequest) => {
+  console.log("inside the open handler");
   const backend = process.env.NEXT_PUBLIC_BACKEND_API || "http://localhost:5000";
   const userId = localStorage.getItem("userId");
   if (!userId) {

@@ -24,9 +24,8 @@ export default function SignIn() {
         }
       );
       const user = response.data.user;
-    //   const token = response.data.token;
       localStorage.setItem("userEmail", email);
-    //   localStorage.setItem("token", token);
+
       console.log(
         "This is the balanceResopnse",
         process.env.NEXT_PUBLIC_BACKEND_API

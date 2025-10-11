@@ -131,7 +131,7 @@ export default function ChartUi() {
             </div>
           </div>
         </div>
-        <div>
+        <div className = 'w-1/3 mr-10'>
           <TradingPanel />
         </div>
       </div>

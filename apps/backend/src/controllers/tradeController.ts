@@ -172,3 +172,22 @@ export const closeTradeController = async (req: Request, res: Response) => {
     });
   }
 };
+
+
+export const getAllTrades = async (req: Request, res: Response) => {
+  const { userId } = req.query;
+  try {
+    if(!userId) {
+      return res.status(411).json({message: "I could not find the userId"})
+    }
+    const trades = await prisma.existingTrades.findMany({
+      where: {
+        userId: userId as string
+      }
+    })
+    return res.status(200).json({trades})
+  }catch(error: unknown) {
+    console.log(error);
+    res.status(403).json({error});
+  }
+}
