@@ -24,25 +24,23 @@ model User {
   existingTrades ExistingTrades[]
 }
 
-model Asset {
-  id             String           @id @default(uuid())
-  symbol         String
-  imageUrl       String
-  name           String
-  decimal        Int
-  existingTrades ExistingTrades[]
-}
 
 model ExistingTrades {
   id         String   @id @default(uuid())
   leverage   Float?
   type       String
+  asset      Coins
   liquidated Boolean?
+  price      Float
   quantity   Float
+  slippage   Float
+  user       User?    @relation(fields: [userId], references: [id])
+  userId     String?
   createdAt  DateTime @default(now())
+}
 
-  asset   Asset   @relation(fields: [assetId], references: [id])
-  assetId String
-  user    User?   @relation(fields: [userId], references: [id])
-  userId  String?
+enum Coins {
+  BTC
+  ETH
+  SOL
 }

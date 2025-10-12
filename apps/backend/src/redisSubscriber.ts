@@ -2,7 +2,7 @@
 import { createClient, RedisClientType } from "redis";
 import { STREAMS } from './config'
 const REPLY_QUEUE_NAME = "ENGINE-REPLY";
-
+const PRICE_STREAM = "price-stream";
 export class RedisSubscriber {
   private client: RedisClientType;
   private callbacks: Record<string, any>;
@@ -33,9 +33,11 @@ export class RedisSubscriber {
     }
   }
   waitForMessage(orderId: string, timeout: number = 5000): Promise<any> {
+    console.log("this is wait for message inside")
+    console.log(this.callbacks)
     return new Promise((resolve, reject) => {
       this.callbacks[orderId] = resolve;
-
+      console.log(this.callbacks)
       if (Object.keys(this.callbacks).length === 1) {
         this.startListening();
       }
@@ -59,17 +61,20 @@ export class RedisSubscriber {
     while (Object.keys(this.callbacks).length >= 1) {
       try {
         const response = await this.client.xRead(
-          { key: REPLY_QUEUE_NAME , id: lastId },
+          { key: PRICE_STREAM , id: lastId },
           { COUNT: 100, BLOCK: 1000 }
         );
-
         if (response && response.length > 0) {
           for (const stream of response) {
             for (const message of stream.messages) {
-              const messageData: Record<string, string> = message.message as any;
-
-              // Engine writes { orderResponse: '{"orderId":..., ...}' }
-              const payloadRaw = messageData["orderResponse"];
+              console.log(message);
+              const messageData: Record<string, string> = message.message as any; 
+              // const data = JSON.parse(messageData);
+              // Engine writes { orderResponse: '{"orderId":..., ...}' 
+              // console.log(messageData.)
+              // console.log(messageData);
+              const payloadRaw = messageData["price-updates"];
+              console.log(payloadRaw)
               let payload: any = null;
               if (payloadRaw) {
                 try {

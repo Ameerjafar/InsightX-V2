@@ -86,57 +86,57 @@ export const getAssetBalances = async (req: Request, res: Response) => {
   }
 };
 
-export const getSupportedAssets = async (req: Request, res: Response) => {
-  try {
-    const existing = await prisma.asset.findMany({ take: 1 });
-    if (existing.length === 0) {
-      await prisma.asset.createMany({
-        data: SUPPORTED_ASSETS.map(a => ({
-          symbol: a.symbol,
-          name: a.name,
-          imageUrl: a.imageUrl,
-          decimal: a.decimal
-        })),
-        skipDuplicates: true
-      });
-    }
-    const all = await prisma.asset.findMany({
-      select: { symbol: true, name: true, imageUrl: true, decimal: true }
-    });
-    return res.status(200).json({ assets: all });
-  } catch (e) {
-    return res.status(500).json({ message: "Internal server error" });
-  }
-};
+// export const getSupportedAssets = async (req: Request, res: Response) => {
+//   try {
+//     const existing = await prisma.asset.findMany({ take: 1 });
+//     if (existing.length === 0) {
+//       await prisma.asset.createMany({
+//         data: SUPPORTED_ASSETS.map(a => ({
+//           symbol: a.symbol,
+//           name: a.name,
+//           imageUrl: a.imageUrl,
+//           decimal: a.decimal
+//         })),
+//         skipDuplicates: true
+//       });
+//     }
+//     const all = await prisma.asset.findMany({
+//       select: { symbol: true, name: true, imageUrl: true, decimal: true }
+//     });
+//     return res.status(200).json({ assets: all });
+//   } catch (e) {
+//     return res.status(500).json({ message: "Internal server error" });
+//   }
+// };
 
-export const getOpenTrades = async (req: Request, res: Response) => {
-  try {
-    const email = req.query.email as string;
-    if (!email) {
-      return res.status(400).json({ message: "Email parameter is required" });
-    }
-    const user = await prisma.user.findUnique({
-      where: { email: email }
-    });
+// export const getOpenTrades = async (req: Request, res: Response) => {
+//   try {
+//     const email = req.query.email as string;
+//     if (!email) {
+//       return res.status(400).json({ message: "Email parameter is required" });
+//     }
+//     const user = await prisma.user.findUnique({
+//       where: { email: email }
+//     });
 
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
+//     if (!user) {
+//       return res.status(404).json({ message: "User not found" });
+//     }
 
-    // Return current open trades (stored in ExistingTrades) for the user
-    const trades = await prisma.existingTrades.findMany({
-      where: { userId: user.id },
-      include: {
-        asset: {
-          select: { symbol: true, name: true, imageUrl: true, decimal: true }
-        }
-      }
-    });
-    return res.status(200).json({ trades });
-  } catch (e) {
-    console.error("Error fetching open trades:", e);
-    return res.status(500).json({ message: "Internal server error" });
-  }
-};
+//     // Return current open trades (stored in ExistingTrades) for the user
+//     // const trades = await prisma.existingTrades.findMany({
+//     //   where: { userId: user.id },
+//     //   include: {
+//     //     asset: {
+//     //       select: { symbol: true, name: true, imageUrl: true, decimal: true }
+//     //     }
+//     //   }
+//     // });
+//     return res.status(200).json({ trades });
+//   } catch (e) {
+//     console.error("Error fetching open trades:", e);
+//     return res.status(500).json({ message: "Internal server error" });
+//   }
+// };
 
 

@@ -1,9 +1,8 @@
-
 import { Request, Response } from "express";
-import Redis from "ioredis"; 
-import { RedisSubscriber } from '../redisSubscriber';
+import Redis from "ioredis";
+import { RedisSubscriber } from "../redisSubscriber";
 import { prisma } from "../db";
-import { REDIS_CONFIG } from '../config';
+import { REDIS_CONFIG } from "../config";
 
 const PRICE_STREAM = "price-stream";
 
@@ -12,108 +11,76 @@ const redisSubscriber = RedisSubscriber.getInstance(REDIS_CONFIG.url);
 
 export const createTradeController = async (req: Request, res: Response) => {
   try {
-    console.log("creating trade")
-    const { asset, type, margin, leverage, userId, quantity } = req.body;
+    const { asset, type, liquidated, userId, quantity, leverage, price } =
+      req.body;
     const slippage = 0.1;
-    if (!asset || !type || !margin || !leverage || !userId) {
+
+    if (!asset || !type || !userId || !quantity || !price) {
       return res.status(400).json({
         success: false,
-        message: "Missing required fields",
+        message: "Missing required fields: asset, type, userId, or quantity",
       });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-    });
-
+    const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
-      return res.status(411).json({
+      return res.status(404).json({
         success: false,
-        message: "User not found in database",
+        message: "User not found",
       });
     }
 
     const orderId = Date.now().toString();
-    const actualValue = margin;
-    
+
     const orderUpdate = {
       asset,
       type,
-      margin: actualValue,
-      leverage,
-      slippage: slippage,
+      slippage,
       userId,
       orderId,
+      ...(leverage ? { leverage } : {}),
+      price,
     };
 
     console.log("Sending order to engine:", orderUpdate);
 
-    await redisPublisher.xadd(
-      PRICE_STREAM,
-      'MAXLEN', '~', '10000',
-      '*',
-      'action', 'createOrder',
-      'data', JSON.stringify(orderUpdate),
-      'orderId', orderId
-    );
-    const result = await redisSubscriber.waitForMessage(orderId, 10000); 
+    const result = {
+      message: "Trade created",
+      tradeData: { liquidated: Boolean(liquidated) },
+    };
 
-    console.log("Received engine response:", result);
-
-    if (result.status === "success") {
-      try {
-        const alreadyExists = await prisma.existingTrades.findFirst({
-          where: {
-            userId: userId,
-            orderId: orderId,
-          } as any,
-        });
-
-        if (!alreadyExists) {
-          const liquidated = Boolean((result as any)?.tradeData?.liquidated) || false;
-          const createData: any = {
-            orderId: orderId,
-            type: type,
-            margin: margin,
-            quantity: quantity,
-            slippage: slippage,
-            assetId: asset,
-            userId: userId,
-            liquidated: liquidated,
-          };
-
-          if (liquidated) {
-            createData.leverage = leverage;
-          }
-
-          await prisma.existingTrades.create({
-            data: createData,
-          });
-        }
-      } catch (e) {
-        console.error("Failed to persist/open existing trade:", e);
-      }
-      res.status(200).json({
-        orderId,
-        success: true,
-        message: result.message,
-        tradeData: result.tradeData,
+    try {
+      await prisma.existingTrades.create({
+        data: {
+          type,
+          price,
+          quantity,
+          slippage,
+          userId,
+          liquidated: Boolean(liquidated),
+          ...(liquidated && leverage ? { leverage } : {}),
+        },
       });
-    } else {
-      res.status(400).json({
-        orderId,
-        success: false,
-        message: result.message,
-      });
+    } catch (err) {
+      console.error("Error saving trade to database:", err);
     }
-  } catch (error) {
-    console.error("Error in createTradeController:", error);
-    res.status(500).json({
+
+    return res.status(200).json({
+      orderId,
+      success: true,
+      message: result.message,
+      tradeData: result.tradeData,
+      price,
+    });
+  } catch (err: unknown) {
+    console.error("Unexpected error in createTradeController:", err);
+    return res.status(500).json({
       success: false,
-      message: error instanceof Error ? error.message : "Internal server error",
+      message: err instanceof Error ? err.message : "Internal server error",
     });
   }
 };
+const redisClient = new Redis(REDIS_CONFIG.url);
 
 export const closeTradeController = async (req: Request, res: Response) => {
   try {
@@ -126,68 +93,110 @@ export const closeTradeController = async (req: Request, res: Response) => {
       });
     }
 
-    console.log("Sending close order to engine:", { orderId, userId });
-    await redisPublisher.xadd(
-      PRICE_STREAM,
-      'MAXLEN', '~', '10000',
-      '*',
-      'action', 'closeOrder',
-      'data', JSON.stringify({ orderId, userId }),
-      'orderId', orderId
-    );
-    const result = await redisSubscriber.waitForMessage(orderId, 10000); 
+    // 1️⃣ Fetch the trade to close
+    const trade = await prisma.existingTrades.findUnique({
+      where: { id: String(orderId) },
+    });
 
-    console.log("Received close response:", result);
-
-    if (result.status === "closed") {
-      try {
-        await prisma.existingTrades.deleteMany({
-          where: {
-            userId: String(userId),
-            orderId: String(orderId),
-          } as any,
-        });
-      } catch (e) {
-        console.error("Failed to remove existing trade on close:", e);
-      }
-
-      res.status(200).json({
-        orderId,
-        success: true,
-        message: result.message,
-        closedTrade: result.closedTrade,
-      });
-    } else {
-      res.status(400).json({
-        orderId,
+    if (!trade || trade.userId !== String(userId)) {
+      return res.status(404).json({
         success: false,
-        message: result.message,
+        message: "Trade not found or already closed",
       });
     }
-  } catch (error) {
-    console.error("Error in closeTradeController:", error);
-    res.status(500).json({
+
+    // 2️⃣ Fetch current market price from Redis
+    let currentPrice = 0;
+    try {
+      const streamData = await redisClient.xrevrange(
+        PRICE_STREAM,
+        "+",
+        "-",
+        "COUNT",
+        1
+      );
+
+      if (streamData && streamData.length > 0) {
+        const latestEntry = streamData[0][1];
+        const pricesStr = latestEntry[1]; // ["prices-updates", "[...json...]"]
+        const pricesArray = JSON.parse(pricesStr as string);
+
+        const assetPriceObj = pricesArray.find(
+          (p: any) => p.asset === trade.asset
+        );
+        if (assetPriceObj) {
+          currentPrice = assetPriceObj.price;
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching current price from Redis:", err);
+    }
+
+    // 3️⃣ Calculate P&L
+    // Assuming: P&L = (currentPrice - trade.price) * quantity * leverage (if any)
+    let pnl = 0;
+    try {
+      const effectiveLeverage = trade.leverage || 1;
+      pnl = (currentPrice - trade.price) * trade.quantity * effectiveLeverage;
+    } catch (err) {
+      console.error("Error calculating P&L:", err);
+      pnl = 0;
+    }
+
+    // 4️⃣ Delete the trade
+    try {
+      await prisma.existingTrades.delete({
+        where: { id: String(orderId) },
+      });
+    } catch (err) {
+      console.error("Error deleting trade from database:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to close trade",
+      });
+    }
+
+    return res.status(200).json({
+      orderId,
+      success: true,
+      message: "Trade closed successfully",
+      pnl,
+      closedTrade: {
+        ...trade,
+        currentPrice,
+        pnl,
+      },
+    });
+  } catch (err) {
+    console.error("Unexpected error in closeTradeController:", err);
+    return res.status(500).json({
       success: false,
-      message: error instanceof Error ? error.message : "Internal server error",
+      message: err instanceof Error ? err.message : "Internal server error",
     });
   }
 };
 
-
 export const getAllTrades = async (req: Request, res: Response) => {
-  const { userId } = req.query;
   try {
-    if(!userId) {
-      return res.status(411).json({message: "I could not find the userId"})
+    const { userId } = req.query;
+    if (!userId) {
+      return res.status(400).json({ message: "Missing userId" });
     }
-    const trades = await prisma.existingTrades.findMany({
-      where: {
-        userId: userId as string
-      }
-    })
-    return res.status(200).json({trades})
-  }catch(error: unknown) {
-    console.log(error);
-    res.status(403).json({error});
+
+    let trades: any[] = [];
+    try {
+      trades = await prisma.existingTrades.findMany({
+        where: { userId: String(userId) },
+      });
+    } catch (err) {
+      console.error("Error fetching trades from database:", err);
+    }
+
+    return res.status(200).json({ trades });
+  } catch (err) {
+    console.error("Unexpected error in getAllTrades:", err);
+    return res
+      .status(500)
+      .json({ error: err instanceof Error ? err.message : err });
   }
-}
+};
